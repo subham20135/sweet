@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MCQ Candy Catcher</title>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.js"></script>
+<style>
+  html, body { margin:0; padding:0; overflow:hidden; height:100%; width:100%; }
+  canvas { display:block; }
+</style>
+</head>
+<body>
+<script>
+class CandyScene extends Phaser.Scene {
+  constructor(){ super('CandyScene'); }
+
+  preload(){
+    this.load.image('basket','assets/basket2.png');
+    this.load.image('candyA','assets/starcandy4.png');
+    this.load.image('candyB','assets/cylindricalcandy1.png');
+    this.load.image('candyC','assets/jemscandy2.png');
+    this.load.image('candyD','assets/eclairscandy3.png');
+    this.load.image('background','assets/backgroundimagecandy2.png');
+
+    this.load.audio('bgm','assets/bgm.mp3');
+    this.load.audio('startwinkle','assets/startwinkle.mp3');
+    this.load.audio('wrongbuzzer','assets/wrongbuzzer.mp3');
+  }
+
+  create(){
+    this.add.image(this.scale.width/2, this.scale.height/2, 'background')
+        .setOrigin(0.5)
+        .setDisplaySize(this.scale.width, this.scale.height);
+
+    this.score = 0;
+    this.lives = 3;
+    this.isPlaying = false;
+    this.currentQuestionIndex = 0;
+
+    this.basket = this.physics.add.sprite(this.scale.width/2, this.scale.height-80, 'basket')
+      .setImmovable(true).setCollideWorldBounds(true).setScale(0.3);
+    this.basket.body.setSize(this.basket.width*0.6, this.basket.height*0.5)
+      .setOffset(this.basket.width*0.2, this.basket.height*0.45);
+
+    this.candies = this.physics.add.group();
+    this.optionTexts = [];
+    this.cursors = this.input.keyboard.createCursorKeys();
+    this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+
+    this.physics.add.overlap(this.basket, this.candies, this.catchCandy, null, this);
+
+    this.scoreText = this.add.text(16,16,'Score: 0',{
+      font:'bold 24px Arial', fill:'#fff', stroke:'#000', strokeThickness:3
+    });
+    this.livesText = this.add.text(16,50,'Lives: 3',{
+      font:'bold 24px Arial', fill:'#fff', stroke:'#000', strokeThickness:3
+    });
+
+    this.questionText = this.add.text(this.scale.width/2, 50,'',{
+      font:'bold 32px Arial', fill:'#ffffff', stroke:'#000', strokeThickness:4
+    }).setOrigin(0.5);
+
+    this.feedbackText = this.add.text(this.scale.width/2, this.scale.height/2,'',{
+      font:'bold 48px Arial', fill:'#ff0', stroke:'#000', strokeThickness:4
+    }).setOrigin(0.5).setVisible(false);
+
+    this.startText = this.add.text(this.scale.width/2, this.scale.height/2, 'PRESS SPACE TO START',{
+      font:'bold 48px Arial', fill:'#ff0', stroke:'#000', strokeThickness:4
+    }).setOrigin(0.5);
+
+    this.restartText = this.add.text(this.scale.width/2, this.scale.height/2 + 80, 'PRESS SPACE TO RESTART',{
+      font:'bold 32px Arial', fill:'#ff0', stroke:'#000', strokeThickness:3
+    }).setOrigin(0.5).setVisible(false);
+
+    // 150 Grammar MCQs real placeholders
+    this.questions = [
+      {q:'Choose the correct determiner: We have ___ sugar left.', options:{A:'much',B:'few',C:'many',D:'little'}, answer:'A'},
+      {q:'Fill in the blank: There are ___ stars in the sky tonight.', options:{A:'any',B:'much',C:'many',D:'little'}, answer:'C'},
+      {q:'Identify the determiner: “Those flowers are beautiful.”', options:{A:'beautiful',B:'are',C:'those',D:'flowers'}, answer:'C'},
+      {q:'Choose the correct linking word: She worked hard ___ she succeeded.', options:{A:'but',B:'so',C:'and',D:'or'}, answer:'B'},
+      {q:'We can go to the park ___ stay home.', options:{A:'and',B:'but',C:'or',D:'so'}, answer:'C'},
+      {q:'Which is the comparative form? This book is ___ than that.', options:{A:'interesting',B:'more interesting',C:'most interesting',D:'interested'}, answer:'B'},
+      {q:'Mount Everest is the ___ mountain.', options:{A:'high',B:'higher',C:'highest',D:'more high'}, answer:'C'},
+      {q:'Fill the blank: This road is ___ than that one.', options:{A:'narrow',B:'more narrow',C:'narrower',D:'narrowest'}, answer:'C'},
+      {q:'Pick the adjective: The sky is blue.', options:{A:'sky',B:'is',C:'blue',D:'The'}, answer:'C'},
+      {q:'Fill in the blank: She sings beautifully ___.', options:{A:'here',B:'why',C:'when',D:'what'}, answer:'A'}
+    ];
+    // fill with 140 more generic grammar MCQs automatically
+    for(let i=11;i<=150;i++){
+      this.questions.push({
+        q:`Grammar Question ${i}: Choose the correct option?`,
+        options:{A:`Option A${i}`,B:`Option B${i}`,C:`Option C${i}`,D:`Option D${i}`},
+        answer:'A'
+      });
+    }
+
+    this.soundOverlay = this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0x000000, 0.5)
+      .setOrigin(0,0);
+    this.soundText = this.add.text(this.scale.width/2, this.scale.height/2, 'CLICK TO ENABLE SOUND',{
+      font:'bold 36px Arial', fill:'#fff'
+    }).setOrigin(0.5);
+
+    this.input.once('pointerdown', () => {
+        this.bgm = this.sound.add('bgm', {volume:0.5, loop:true});
+        this.bgm.play();
+        this.soundOverlay.destroy();
+        this.soundText.destroy();
+    });
+  }
+
+  startGame(){
+    this.startText.setVisible(false);
+    this.restartText.setVisible(false);
+    this.isPlaying = true;
+    this.currentQuestionIndex = 0;
+    this.score = 0;
+    this.lives = 3;
+    this.scoreText.setText('Score: 0');
+    this.livesText.setText('Lives: 3');
+    this.loadQuestion();
+  }
+
+  loadQuestion(){
+    this.candies.clear(true,true);
+    this.optionTexts.forEach(t=>t.destroy());
+    this.optionTexts = [];
+    this.feedbackText.setVisible(false);
+
+    if(this.currentQuestionIndex >= this.questions.length || this.lives <= 0){
+      this.isPlaying = false;
+      this.feedbackText.setText('GAME OVER!\nScore: '+this.score).setFill('#f00').setVisible(true);
+      this.restartText.setVisible(true);
+      return;
+    }
+
+    let q = this.questions[this.currentQuestionIndex];
+    this.questionText.setText(q.q);
+
+    let positions = [this.scale.width*0.2,this.scale.width*0.4,this.scale.width*0.6,this.scale.width*0.8];
+    let startY = 150;
+    let keys = ['candyA','candyB','candyC','candyD'];
+
+    for(let i=0;i<4;i++){
+      let opt = Object.keys(q.options)[i];
+      let candy = this.candies.create(positions[i], startY, keys[i]);
+      candy.setScale(0.12).option = opt;
+      candy.setVelocityY(100);
+      candy.floatSpeed = Phaser.Math.Between(20,40);
+      let text = this.add.text(positions[i], startY - 40, `${opt}: ${q.options[opt]}`, {
+        font: 'bold 24px Comic Sans MS',
+        fill: '#ff0',
+        stroke:'#000', strokeThickness:3,
+        shadow:{ offsetX:2, offsetY:2, color:'#555', blur:2, stroke:true, fill:true }
+      }).setOrigin(0.5);
+      this.optionTexts.push(text);
+    }
+  }
+
+  update(time){
+    if(!this.isPlaying){
+      if(Phaser.Input.Keyboard.JustDown(this.spaceKey)) this.startGame();
+      return;
+    }
+
+    if(this.cursors.left.isDown) this.basket.setVelocityX(-350);
+    else if(this.cursors.right.isDown) this.basket.setVelocityX(350);
+    else this.basket.setVelocityX(0);
+
+    this.optionTexts.forEach((text,i)=>{
+      let candy = this.candies.getChildren()[i];
+      if(candy){
+        text.setPosition(candy.x, candy.y - 40);
+        candy.x += Math.sin(time/500 + i) * 0.5 * candy.floatSpeed * 0.016;
+      }
+    });
+  }
+
+  catchCandy(basket, candy){
+    if(!candy.active) return;
+    let q = this.questions[this.currentQuestionIndex];
+    if(candy.option === q.answer){
+      this.score += 10;
+      this.scoreText.setText('Score: '+this.score);
+      this.sound.play('startwinkle');
+      this.feedbackText.setText('Superb!').setFill('#0f0').setVisible(true);
+    } else {
+      this.lives--;
+      this.livesText.setText('Lives: '+this.lives);
+      this.sound.play('wrongbuzzer');
+      this.feedbackText.setText('Oops!').setFill('#f00').setVisible(true);
+    }
+    candy.disableBody(true,true);
+    this.currentQuestionIndex++;
+    this.time.delayedCall(1000, ()=>this.loadQuestion(), [], this);
+  }
+}
+
+const config = {
+  type: Phaser.AUTO,
+  width: window.innerWidth,
+  height: window.innerHeight,
+  physics: { default:'arcade', arcade:{ debug:false, fps:60 }},
+  scene: CandyScene
+};
+
+new Phaser.Game(config);
+</script>
+</body>
+</html>
